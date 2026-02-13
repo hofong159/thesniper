@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>特戰英豪準心生成器 v2.0</title>
+    <style>
+        :root {
+            --bg-color: #0f1923;
+            --panel-bg: #1f2326;
+            --accent: #ff4655; /* Valorant Red */
+            --accent-hover: #d13644;
+            --text-main: #ece8e1;
+            --text-muted: #8b978f;
+            --input-bg: #2f353a;
+            --border-color: #444;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'DIN Next W1G', 'Segoe UI', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- 左側控制面板 --- */
+        .sidebar {
+            width: 420px;
+            background-color: var(--panel-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 4px 0 15px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+
+        .header {
+            padding: 20px;
+            background: #111;
+            border-bottom: 2px solid var(--accent);
+            text-align: center;
+        }
+        .header h2 { margin: 0; color: var(--accent); letter-spacing: 2px; }
+
+        /* 分頁按鈕 */
+        .tabs {
+            display: flex;
+            background: #181b1d;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 15px 0;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-weight: bold;
+            border-bottom: 3px solid transparent;
+            transition: 0.3s;
+        }
+        .tab-btn:hover { color: white; background: #252a2e; }
+        .tab-btn.active {
+            color: var(--text-main);
+            border-bottom-color: var(--accent);
+            background: var(--panel-bg);
+        }
+
+        /* 內容區域 scroll */
+        .controls-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* 控制項樣式 */
+        .control-group {
+            margin-bottom: 18px;
+            background: rgba(255,255,255,0.03);
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+            color: #ddd;
+        }
+
+        .val-display {
+            color: var(--accent);
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        /* Input 樣式 */
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #444;
+            border-radius: 3px;
+            outline: none;
+            appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: .2s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            background: var(--input-bg);
+            color: white;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        input[type="color"] {
+            width: 100%;
+            height: 35px;
+            border: none;
+            background: none;
+            cursor: pointer;
+        }
+
+        /* --- 右側預覽區 --- */
+        .preview-area {
+            flex-grow: 1;
+            position: relative;
+            background-image: url('https://images.contentstack.io/v3/assets/bltb6530b271fddd0b1/blt7275cf518dd91122/5f627791653c072b22e1e07e/Ascent_Mid_Cubby.jpg');
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* 準心容器 */
+        .crosshair-wrapper {
+            position: relative;
+            width: 0;
+            height: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* 模擬遊戲中的像素渲染，避免模糊 */
+            image-rendering: pixelated; 
+        }
+
+        .line {
+            position: absolute;
+            background-color: var(--ch-color);
+        }
+
+        .dot {
+            position: absolute;
+            background-color: var(--ch-color);
+            width: var(--dot-size);
+            height: var(--dot-size);
+            opacity: var(--dot-opacity);
+            z-index: 20;
+        }
+
+        /* 輪廓與圓角 */
+        .has-outline .line, .has-outline .dot {
+            box-shadow: 0 0 0 var(--outline-thickness) rgba(0,0,0, var(--outline-opacity));
+        }
+        
+        .rounded-caps .line, .rounded-caps .dot {
+            border-radius: 99px;
+        }
+
+        /* --- 底部工具列 --- */
+        .toolbar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 25, 35, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+
+        button.action-btn {
+            padding: 10px 20px;
+            background: var(--input-bg);
+            color: white;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button.action-btn.primary {
+            background-color: var(--accent);
+            border-color: var(--accent);
+        }
+        button.action-btn:hover { filter: brightness(1.2); }
+
+        .bg-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.6);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="header">
+            <h2>CROSSHAIR LAB</h2>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('general')">一般</button>
+            <button class="tab-btn" onclick="switchTab('inner')">內線</button>
+            <button class="tab-btn" onclick="switchTab('outer')">外線</button>
+        </div>
+
+        <div class="controls-container">
+            <div id="tab-general" class="tab-content active">
+                <div class="control-group">
+                    <label>形狀模式 (Shape Mode)</label>
+                    <select id="shape-mode" onchange="updateCrosshair()">
+                        <option value="standard">標準十字 (Standard)</option>
+                        <option value="dot">僅圓點 (Dot Only)</option>
+                        <option value="t-shape">T型準心 (No Top Line)</option>
+                        <option value="circle">圓形模擬 (Circle Style)</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>顏色 (Color)</label>
+                    <input type="color" id="color" value="#00ff00">
+                </div>
+
+                <div class="control-group">
+                    <label>端點樣式 (Line Style)</label>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="checkbox" id="rounded-check"> 
+                        <span style="font-size:0.9em; color:#aaa;">圓角端點 (Rounded)</span>
+                    </div>
+                </div>
+
+                <hr style="border-color:#333; margin: 15px 0;">
+                
+                <h4 style="margin:5px 0 10px 0; color:var(--accent);">中心點 (Center Dot)</h4>
+                <div class="control-group">
+                    <label>啟用中心點 <input type="checkbox" id="dot-show" checked></label>
+                </div>
+                <div class="control-group">
+                    <label>透明度 <span class="val-display" id="disp-dot-op">1</span></label>
+                    <input type="range" id="dot-op" min="0" max="1" step="0.1" value="1">
+                </div>
+                <div class="control-group">
+                    <label>大小 <span class="val-display" id="disp-dot-sz">2</span></label>
+                    <input type="range" id="dot-sz" min="1" max="6" step="1" value="2">
+                </div>
+
+                <h4 style="margin:15px 0 10px 0; color:var(--accent);">輪廓 (Outlines)</h4>
+                <div class="control-group">
+                    <label>啟用輪廓 <input type="checkbox" id="outline-show" checked></label>
+                </div>
+                <div class="control-group">
+                    <label>透明度 <span class="val-display" id="disp-out-op">0.5</span></label>
+                    <input type="range" id="out-op" min="0" max="1" step="0.1" value="0.5">
+                </div>
+                <div class="control-group">
+                    <label>厚度 <span class="val-display" id="disp-out-th">1</span></label>
+                    <input type="range" id="out-th" min="1" max="6" step="1" value="1">
+                </div>
+            </div>
+
+            <div id="tab-inner" class="tab-content">
+                <div class="control-group">
+                    <label>顯示內線 <input type="checkbox" id="in-show" checked></label>
+                </div>
+                <div class="control-group">
+                    <label>透明度 <span class="val-display" id="disp-in-op">0.8</span></label>
+                    <input type="range" id="in-op" min="0" max="1" step="0.05" value="0.8">
+                </div>
+                <div class="control-group">
+                    <label>長度 <span class="val-display" id="disp-in-len">6</span></label>
+                    <input type="range" id="in-len" min="0" max="20" step="1" value="6">
+                </div>
+                <div class="control-group">
+                    <label>厚度 <span class="val-display" id="disp-in-th">2</span></label>
+                    <input type="range" id="in-th" min="1" max="10" step="1" value="2">
+                </div>
+                <div class="control-group">
+                    <label>偏移量 <span class="val-display" id="disp-in-off">3</span></label>
+                    <input type="range" id="in-off" min="0" max="20" step="1" value="3">
+                </div>
+            </div>
+
+            <div id="tab-outer" class="tab-content">
+                <div class="control-group">
+                    <label>顯示外線 <input type="checkbox" id="out-show"></label>
+                </div>
+                <div class="control-group">
+                    <label>透明度 <span class="val-display" id="disp-outl-op">0.35</span></label>
+                    <input type="range" id="outl-op" min="0" max="1" step="0.05" value="0.35">
+                </div>
+                <div class="control-group">
+                    <label>長度 <span class="val-display" id="disp-outl-len">2</span></label>
+                    <input type="range" id="outl-len" min="0" max="10" step="1" value="2">
+                </div>
+                <div class="control-group">
+                    <label>厚度 <span class="val-display" id="disp-outl-th">2</span></label>
+                    <input type="range" id="outl-th" min="1" max="10" step="1" value="2">
+                </div>
+                <div class="control-group">
+                    <label>偏移量 <span class="val-display" id="disp-outl-off">10</span></label>
+                    <input type="range" id="outl-off" min="0" max="40" step="1" value="10">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="preview-area" id="preview-bg">
+        <div class="bg-controls">
+            <button class="action-btn" onclick="toggleBg()" style="font-size:0.8em; padding:5px 10px;">切換背景 (Day/Night)</button>
+        </div>
+
+        <div class="crosshair-wrapper" id="crosshair">
+            <div class="dot"></div>
+            <div class="line inner top"></div>
+            <div class="line inner bottom"></div>
+            <div class="line inner left"></div>
+            <div class="line inner right"></div>
+            <div class="line outer top"></div>
+            <div class="line outer bottom"></div>
+            <div class="line outer left"></div>
+            <div class="line outer right"></div>
+        </div>
+
+        <div class="toolbar">
+            <input type="text" id="code-output" readonly style="background:#222; border:1px solid #444; color:#0f0; padding:10px; width:200px; border-radius:4px;" value="0;P;c;1...">
+            <button class="action-btn primary" onclick="copyCode()">複製代碼</button>
+            <button class="action-btn" onclick="randomize()">隨機生成</button>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const crosshair = document.getElementById('crosshair');
+        const inputs = document.querySelectorAll('input, select');
+        
+        // Listeners
+        inputs.forEach(input => input.addEventListener('input', updateCrosshair));
+
+        // Tab Switching Logic
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+
+        function updateCrosshair() {
+            // 1. Get Values
+            const shapeMode = document.getElementById('shape-mode').value;
+            const color = document.getElementById('color').value;
+            const isRounded = document.getElementById('rounded-check').checked;
+
+            // Update Root Styles
+            const root = document.documentElement;
+            root.style.setProperty('--ch-color', color);
+
+            // Outlines
+            const hasOutline = document.getElementById('outline-show').checked;
+            const outTh = document.getElementById('out-th').value;
+            const outOp = document.getElementById('out-op').value;
+            root.style.setProperty('--outline-thickness', outTh + 'px');
+            root.style.setProperty('--outline-opacity', outOp);
+            
+            if(hasOutline) crosshair.classList.add('has-outline');
+            else crosshair.classList.remove('has-outline');
+
+            if(isRounded) crosshair.classList.add('rounded-caps');
+            else crosshair.classList.remove('rounded-caps');
+
+            // Dot
+            const hasDot = document.getElementById('dot-show').checked;
+            const dotOp = document.getElementById('dot-op').value;
+            const dotSz = document.getElementById('dot-sz').value;
+            root.style.setProperty('--dot-size', dotSz + 'px');
+            root.style.setProperty('--dot-opacity', (hasDot && shapeMode !== 't-shape') ? dotOp : 0);
+            
+            // Text Displays
+            updateDisplays();
+
+            // Render Lines
+            renderLineGroup('inner', shapeMode);
+            renderLineGroup('outer', shapeMode);
+
+            // Shape Special Logic Overrides
+            if (shapeMode === 'dot') {
+                // Hide all lines
+                document.querySelectorAll('.line').forEach(l => l.style.display = 'none');
+                root.style.setProperty('--dot-opacity', dotOp); // Ensure dot is visible
+            } else {
+                document.querySelectorAll('.line').forEach(l => l.style.display = 'block');
+            }
+
+            if (shapeMode === 'circle') {
+                // Circle hack: Short thick lines (Override users sliders for visual demo)
+                // Note: In a real app we might want to actually move the sliders, but here we just override styles
+                // Or better, let user adjust but suggest values.
+                // For this logic, let's keep user values but rely on "Rounded" check mainly.
+                if(!isRounded) document.getElementById('rounded-check').checked = true; // Auto enable rounded for circle
+            }
+
+            generateCodeStub();
+        }
+
+        function renderLineGroup(type, shapeMode) {
+            // Get values based on type
+            const prefix = type === 'inner' ? 'in' : 'outl'; // ids are in-xxx or outl-xxx
+            const show = document.getElementById(type === 'inner' ? 'in-show' : 'out-show').checked;
+            const op = document.getElementById(`${prefix}-op`).value;
+            const len = document.getElementById(`${prefix}-len`).value;
+            const th = document.getElementById(`${prefix}-th`).value;
+            const off = document.getElementById(`${prefix}-off`).value;
+
+            const lines = document.querySelectorAll(`.line.${type}`);
+            
+            lines.forEach(line => {
+                // Shape Logic: T-Shape hides top lines
+                if (shapeMode === 't-shape' && line.classList.contains('top')) {
+                    line.style.opacity = 0;
+                    return;
+                }
+
+                if (!show) {
+                    line.style.opacity = 0;
+                    return;
+                }
+                
+                line.style.opacity = op;
+
+                const length = parseInt(len);
+                const thickness = parseInt(th);
+                const offset = parseInt(off);
+
+                if (line.classList.contains('top') || line.classList.contains('bottom')) {
+                    // Vertical
+                    line.style.width = thickness + 'px';
+                    line.style.height = length + 'px';
+                    line.style.left = `calc(50% - ${thickness/2}px)`;
+                    
+                    if (line.classList.contains('top')) line.style.top = `calc(50% - ${length + offset}px)`;
+                    else line.style.top = `calc(50% + ${offset}px)`;
+                } else {
+                    // Horizontal
+                    line.style.height = thickness + 'px';
+                    line.style.width = length + 'px';
+                    line.style.top = `calc(50% - ${thickness/2}px)`;
+
+                    if (line.classList.contains('left')) line.style.left = `calc(50% - ${length + offset}px)`;
+                    else line.style.left = `calc(50% + ${offset}px)`;
+                }
+            });
+        }
+
+        function updateDisplays() {
+            const ids = ['dot-op', 'dot-sz', 'out-op', 'out-th', 'in-op', 'in-len', 'in-th', 'in-off', 'outl-op', 'outl-len', 'outl-th', 'outl-off'];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                const disp = document.getElementById('disp-' + id);
+                if(el && disp) disp.innerText = el.value;
+            });
+        }
+
+        function toggleBg() {
+            const bg = document.getElementById('preview-bg');
+            if (bg.style.filter === "brightness(0.3)") {
+                bg.style.filter = "brightness(1)";
+            } else {
+                bg.style.filter = "brightness(0.3)";
+            }
+        }
+
+        function randomize() {
+            // 隨機數值的簡單實作
+            document.getElementById('color').value = '#' + Math.floor(Math.random()*16777215).toString(16);
+            document.getElementById('in-len').value = Math.floor(Math.random() * 10) + 2;
+            document.getElementById('in-off').value = Math.floor(Math.random() * 5);
+            document.getElementById('shape-mode').value = Math.random() > 0.7 ? 'dot' : 'standard';
+            updateCrosshair();
+        }
+
+        function generateCodeStub() {
+            // 模擬生成代碼，僅供展示
+            let code = "0;P";
+            const colorHex = document.getElementById('color').value.replace('#','');
+            code += `;c;8;u;${colorHex}`;
+            
+            // 根據 shape 模式添加不同標記
+            if(document.getElementById('shape-mode').value === 't-shape') code += ";h;0;0l;...";
+            
+            code += `;b;1`; // 假結尾
+            document.getElementById('code-output').value = code;
+        }
+
+        function copyCode() {
+            const el = document.getElementById('code-output');
+            el.select();
+            document.execCommand('copy');
+            alert("代碼已複製 (模擬格式)");
+        }
+
+        // Init
+        updateCrosshair();
+    </script>
+</body>
+</html>
